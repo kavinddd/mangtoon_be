@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"database/sql"
 	"github.com/kavinddd/mangtoon_be/pkg/util"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -48,7 +47,7 @@ func TestGetUser(t *testing.T) {
 	require.Equal(t, account1.Email, account2.Email)
 	require.Equal(t, account1.Password, account2.Password)
 	require.WithinDuration(t, account1.CreatedAt, account2.CreatedAt, time.Second)
-	require.False(t, account2.IsActive.Bool)
+	require.False(t, account2.IsActive)
 }
 
 func TestUpdateUserEmail(t *testing.T) {
@@ -66,7 +65,7 @@ func TestUpdateUserIsActive(t *testing.T) {
 	user1 := createRandomUser(t)
 	arg := UpdateUserIsActiveParams{
 		ID:       user1.ID,
-		IsActive: sql.NullBool{Bool: true},
+		IsActive: true,
 	}
 	err := testQueries.UpdateUserIsActive(context.Background(), arg)
 	require.NoError(t, err)

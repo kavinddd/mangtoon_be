@@ -8,6 +8,9 @@ endif
 test:   
 	@go test -v -cover ./...
 
+server:
+	@go run ./cmd/mangtoon/main.go
+
 db-create:
 	${CONTAINER_RUNTIME} exec -it mangtoon_postgres createdb --username=root --owner=root mangtoon
 
@@ -32,8 +35,17 @@ db-migrate-down:
 db-migrate-reset:
 	@GOOSE_DRIVER=postgres GOOSE_DBSTRING="user=root dbname=mangtoon sslmode=disable host=localhost port=5432 password=dev" goose -dir=internal/db/migrations reset
 
+db-new-migrate:
+	goose -dir internal/db/migrations create new sql
+
+
 sqlc: 
 	sqlc generate
 
+mock:
+	mockgen -package mockdb -destination internal/db/mock/store.go github.com/kavinddd/mangtoon_be/internal/db Store
 
-.PHONY: db-create db-drop db-status db-migrate-up db-migrate-down db-migrate-reset db-container-create db-container-run sqlc test
+
+
+
+.PHONY: db-create db-drop db-status db-migrate-up db-migrate-down db-migrate-reset db-new-migrate db-container-create db-container-run sqlc test server mock

@@ -7,7 +7,6 @@ package db
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/google/uuid"
 )
@@ -60,6 +59,49 @@ func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
 	return i, err
 }
 
+const listActiveUsers = `-- name: ListActiveUsers :many
+SELECT id, username, email, password, is_active, created_at FROM "user"
+WHERE is_active = true
+ORDER BY id
+LIMIT $1
+OFFSET $2
+`
+
+type ListActiveUsersParams struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
+}
+
+func (q *Queries) ListActiveUsers(ctx context.Context, arg ListActiveUsersParams) ([]User, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveUsers, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.Email,
+			&i.Password,
+			&i.IsActive,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUsers = `-- name: ListUsers :many
 SELECT id, username, email, password, is_active, created_at FROM "user"
 ORDER BY id
@@ -78,7 +120,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 		return nil, err
 	}
 	defer rows.Close()
-	var items []User
+	items := []User{}
 	for rows.Next() {
 		var i User
 		if err := rows.Scan(
@@ -121,8 +163,8 @@ UPDATE "user" SET is_active = $2 WHERE id = $1
 `
 
 type UpdateUserIsActiveParams struct {
-	ID       uuid.UUID    `json:"id"`
-	IsActive sql.NullBool `json:"is_active"`
+	ID       uuid.UUID `json:"id"`
+	IsActive bool      `json:"is_active"`
 }
 
 func (q *Queries) UpdateUserIsActive(ctx context.Context, arg UpdateUserIsActiveParams) error {

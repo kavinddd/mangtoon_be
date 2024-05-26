@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"github.com/kavinddd/mangtoon_be/pkg/util"
 	"log"
 	"os"
 	"testing"
@@ -11,13 +12,12 @@ import (
 
 var testQueries *Queries
 
-const (
-	dbDriver = "postgres"
-	dbSource = "postgresql://root:dev@localhost:5432/mangtoon?sslmode=disable"
-)
-
 func TestMain(m *testing.M) {
-	conn, err := sql.Open(dbDriver, dbSource)
+	config, err := util.LoadConfig("../..")
+	if err != nil {
+		log.Fatal("Cannot load config: ", err)
+	}
+	conn, err := sql.Open(config.DBDriver, config.DBSource)
 
 	if err != nil {
 		log.Fatal("Cannot connect to DB: ", err)

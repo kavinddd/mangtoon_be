@@ -16,6 +16,13 @@ ORDER BY id
 LIMIT $1
 OFFSET $2;
 
+-- name: ListActiveUsers :many
+SELECT * FROM "user"
+WHERE is_active = true
+ORDER BY id
+LIMIT $1
+OFFSET $2;
+
 -- name: UpdateUserPassword :exec
 UPDATE "user" SET password = $2 WHERE id = $1;
 

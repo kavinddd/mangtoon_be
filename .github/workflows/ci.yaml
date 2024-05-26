@@ -21,7 +21,12 @@ jobs:
           POSTGRES_DB: mangtoon
           POSTGRES_USER: root
           POSTGRES_PASSWORD: dev
-
+#        comment this out, since it fails the job
+#        options: >-
+#          --health-cmd pd_isready
+#          --health-interval 10s
+#          --health-timeout 5s
+#          --health-retries 5
         ports:
           - 5432:5432
 
