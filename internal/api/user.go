@@ -5,8 +5,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/kavinddd/mangtoon_be/internal/db"
-	"github.com/kavinddd/mangtoon_be/internal/responseUtils"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/kavinddd/mangtoon_be/pkg/util"
 	"net/http"
 	"time"
 )
@@ -26,27 +25,27 @@ type createUserResponse struct {
 func (server *Server) CreateUser(ctx *gin.Context) {
 	var req createUserRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, responseUtils.ErrorResponse(err))
+		ctx.JSON(http.StatusBadRequest, util.ErrorResponse(err))
 		return
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	hashedPassword, err := util.HashPassword(req.Password)
 
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, responseUtils.ErrorResponse(err))
+		ctx.JSON(http.StatusInternalServerError, util.ErrorResponse(err))
 		return
 	}
 
 	arg := db.CreateUserParams{
 		Username: req.Username,
 		Email:    req.Email,
-		Password: string(hashedPassword),
+		Password: hashedPassword,
 	}
 
 	user, err := server.store.CreateUser(ctx, arg)
 
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, responseUtils.ErrorResponse(err))
+		ctx.JSON(http.StatusInternalServerError, util.ErrorResponse(err))
 		return
 	}
 
@@ -81,7 +80,7 @@ type listUsersRequest struct {
 func (server *Server) ListUsers(ctx *gin.Context) {
 	var req listUsersRequest
 	if err := ctx.ShouldBindQuery(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, responseUtils.ErrorResponse(err))
+		ctx.JSON(http.StatusBadRequest, util.ErrorResponse(err))
 		return
 	}
 
@@ -93,7 +92,7 @@ func (server *Server) ListUsers(ctx *gin.Context) {
 	users, err := server.store.ListUsers(ctx, args)
 
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, responseUtils.ErrorResponse(err))
+		ctx.JSON(http.StatusInternalServerError, util.ErrorResponse(err))
 		return
 	}
 
@@ -114,7 +113,7 @@ type findUserByIdResponse struct {
 func (server *Server) FindUserById(ctx *gin.Context) {
 	var req findUserByIdRequest
 	if err := ctx.ShouldBindUri(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, responseUtils.ErrorResponse(err))
+		ctx.JSON(http.StatusBadRequest, util.ErrorResponse(err))
 		return
 	}
 
@@ -124,11 +123,11 @@ func (server *Server) FindUserById(ctx *gin.Context) {
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			ctx.JSON(http.StatusNotFound, responseUtils.ErrorResponse(err))
+			ctx.JSON(http.StatusNotFound, util.ErrorResponse(err))
 			return
 		}
 
-		ctx.JSON(http.StatusInternalServerError, responseUtils.ErrorResponse(err))
+		ctx.JSON(http.StatusInternalServerError, util.ErrorResponse(err))
 		return
 	}
 

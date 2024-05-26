@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"fmt"
+	"github.com/gin-gonic/gin"
 	"github.com/goccy/go-json"
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
@@ -14,16 +15,18 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 )
 
 func randomUser() db.User {
+	hashedPassword, _ := util.HashPassword(util.RandomString(10))
 	return db.User{
 		ID:        uuid.New(),
 		Username:  util.RandomUsername(),
 		Email:     util.RandomEmail(),
-		Password:  util.RandomString(10),
+		Password:  hashedPassword,
 		IsActive:  false,
 		CreatedAt: time.Time{},
 	}
@@ -39,7 +42,6 @@ func randomUsers(n int) []db.User {
 func requireBodyMatchUserResponse(t *testing.T, body *bytes.Buffer, user db.User) {
 	data, err := io.ReadAll(body)
 	require.NoError(t, err)
-
 	var userFromBody db.User
 	err = json.Unmarshal(data, &userFromBody)
 	require.NoError(t, err)
@@ -239,6 +241,116 @@ func TestListUsers(t *testing.T) {
 			// prepare to send request
 			url := fmt.Sprintf("/users?page_size=%d&page_no=%d", tc.pageSize, tc.pageNo)
 			request, err := http.NewRequest(http.MethodGet, url, nil)
+			require.NoError(t, err)
+
+			// send request (response is stored in recorder)
+			server := NewServer(store)
+			recorder := httptest.NewRecorder()
+			server.router.ServeHTTP(recorder, request)
+
+			// check response
+			tc.checkResponse(t, recorder)
+		})
+	}
+
+}
+
+func requireBodyMatchCreateUserResponse(t *testing.T, body *bytes.Buffer, userResponse createUserResponse) {
+	data, err := io.ReadAll(body)
+	require.NoError(t, err)
+	var responseFromBody createUserResponse
+	err = json.Unmarshal(data, &responseFromBody)
+	require.NoError(t, err)
+	require.Equal(t, userResponse, responseFromBody)
+}
+
+type eqCreateUserParamMatcher struct {
+	arg      db.CreateUserParams
+	password string
+}
+
+func (e eqCreateUserParamMatcher) Matches(x interface{}) bool {
+	// x is what it sends to compare from the user.go (what actually be used, so it got hashed)
+	arg, ok := x.(db.CreateUserParams)
+
+	if !ok {
+		return false
+	}
+
+	err := util.CheckPassword(e.password, arg.Password)
+
+	if err != nil {
+		return false
+	}
+
+	e.arg.Password = arg.Password
+
+	return reflect.DeepEqual(e.arg, arg)
+}
+
+func (e eqCreateUserParamMatcher) String() string {
+	return fmt.Sprintf("Matches arg %v and password %v", e.arg, e.password)
+}
+
+func EqCreateUserParam(arg db.CreateUserParams, password string) gomock.Matcher {
+	return eqCreateUserParamMatcher{arg, password}
+}
+
+func TestCreateUser(t *testing.T) {
+	user := randomUser()
+	rawPassword := util.RandomString(10)
+
+	expectedUserResponse := createUserResponse{
+		Id:       user.ID,
+		Username: user.Username,
+		Email:    user.Email,
+	}
+
+	testCases := []struct {
+		name          string
+		body          gin.H
+		buildStubs    func(store *mockdb.MockStore)
+		checkResponse func(t *testing.T, recorder *httptest.ResponseRecorder)
+	}{
+		{
+			name: "OK",
+			body: gin.H{
+				"username": user.Username,
+				"password": rawPassword,
+				"email":    user.Email,
+			},
+			buildStubs: func(store *mockdb.MockStore) {
+				arg := db.CreateUserParams{
+					Username: user.Username,
+					Email:    user.Email,
+				}
+				store.
+					EXPECT().
+					CreateUser(gomock.Any(), EqCreateUserParam(arg, rawPassword)).
+					Times(1).
+					Return(user, nil)
+			},
+			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
+				require.Equal(t, recorder.Code, http.StatusOK)
+				requireBodyMatchCreateUserResponse(t, recorder.Body, expectedUserResponse)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// build stubs
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			store := mockdb.NewMockStore(ctrl)
+			tc.buildStubs(store)
+
+			// prepare to send request
+			data, err := json.Marshal(tc.body)
+			fmt.Println(data)
+			require.NoError(t, err)
+			url := "/users"
+			request, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(data))
 			require.NoError(t, err)
 
 			// send request (response is stored in recorder)
