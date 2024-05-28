@@ -11,9 +11,14 @@ import (
 )
 
 type Querier interface {
+	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
-	GetUser(ctx context.Context, id uuid.UUID) (User, error)
+	GetSessionById(ctx context.Context, id uuid.UUID) (Session, error)
+	GetSessionByUserId(ctx context.Context, userID uuid.UUID) (Session, error)
+	GetUserById(ctx context.Context, id uuid.UUID) (User, error)
+	GetUserByUsername(ctx context.Context, username string) (User, error)
 	ListActiveUsers(ctx context.Context, arg ListActiveUsersParams) ([]User, error)
+	ListRolesByUserId(ctx context.Context, userID uuid.UUID) ([]string, error)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
 	UpdateUserEmail(ctx context.Context, arg UpdateUserEmailParams) error
 	UpdateUserIsActive(ctx context.Context, arg UpdateUserIsActiveParams) error

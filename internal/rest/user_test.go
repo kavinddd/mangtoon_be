@@ -1,4 +1,4 @@
-package api
+package rest
 
 import (
 	"bytes"
@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/kavinddd/mangtoon_be/internal/db"
 	mockdb "github.com/kavinddd/mangtoon_be/internal/db/mock"
+	"github.com/kavinddd/mangtoon_be/internal/role"
 	"github.com/kavinddd/mangtoon_be/pkg/util"
 	"github.com/stretchr/testify/require"
 	"io"
@@ -20,8 +21,9 @@ import (
 	"time"
 )
 
-func randomUser() db.User {
-	hashedPassword, _ := util.HashPassword(util.RandomString(10))
+func randomUser() (db.User, string) {
+	password := util.RandomString(10)
+	hashedPassword, _ := util.HashPassword(password)
 	return db.User{
 		ID:        uuid.New(),
 		Username:  util.RandomUsername(),
@@ -29,12 +31,13 @@ func randomUser() db.User {
 		Password:  hashedPassword,
 		IsActive:  false,
 		CreatedAt: time.Time{},
-	}
+	}, password
 }
 func randomUsers(n int) []db.User {
 	var users []db.User
 	for i := 0; i < n; i++ {
-		users = append(users, randomUser())
+		user, _ := randomUser()
+		users = append(users, user)
 	}
 	return users
 }
@@ -45,11 +48,11 @@ func requireBodyMatchUserResponse(t *testing.T, body *bytes.Buffer, user db.User
 	var userFromBody db.User
 	err = json.Unmarshal(data, &userFromBody)
 	require.NoError(t, err)
-	require.Equal(t, user, userFromBody)
+	require.Equal(t, newUserResponse(user), newUserResponse(userFromBody))
 }
 
 func TestFindUserById(t *testing.T) {
-	user := randomUser()
+	user, _ := randomUser()
 
 	testCases := []struct {
 		name          string
@@ -63,7 +66,7 @@ func TestFindUserById(t *testing.T) {
 			buildStubs: func(store *mockdb.MockStore) {
 				store.
 					EXPECT().
-					GetUser(gomock.Any(), gomock.Eq(user.ID)).
+					GetUserById(gomock.Any(), gomock.Eq(user.ID)).
 					Times(1).
 					Return(user, nil)
 			},
@@ -78,7 +81,7 @@ func TestFindUserById(t *testing.T) {
 			buildStubs: func(store *mockdb.MockStore) {
 				store.
 					EXPECT().
-					GetUser(gomock.Any(), gomock.Eq(user.ID)).
+					GetUserById(gomock.Any(), gomock.Eq(user.ID)).
 					Times(1).
 					Return(db.User{}, sql.ErrNoRows)
 			},
@@ -92,7 +95,7 @@ func TestFindUserById(t *testing.T) {
 			buildStubs: func(store *mockdb.MockStore) {
 				store.
 					EXPECT().
-					GetUser(gomock.Any(), gomock.Eq(user.ID)).
+					GetUserById(gomock.Any(), gomock.Eq(user.ID)).
 					Times(1).
 					Return(db.User{}, sql.ErrConnDone) // anything except ErrNoRow since we are handling it
 			},
@@ -107,7 +110,7 @@ func TestFindUserById(t *testing.T) {
 			buildStubs: func(store *mockdb.MockStore) {
 				store.
 					EXPECT().
-					GetUser(gomock.Any(), gomock.Any()).
+					GetUserById(gomock.Any(), gomock.Any()).
 					Times(0)
 			},
 			checkResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
@@ -127,10 +130,23 @@ func TestFindUserById(t *testing.T) {
 			// prepare to send request
 			url := fmt.Sprintf("/users/%s", tc.userId)
 			request, err := http.NewRequest(http.MethodGet, url, nil)
+
 			require.NoError(t, err)
 
 			// send request (response is stored in recorder)
-			server := NewServer(store)
+			server := newTestServer(t, store)
+
+			// attach Token (need to attach after init server since it needs to know which token server uses)
+			addAuthorizationToHeader(
+				t,
+				request,
+				server.tokenMaker,
+				authorizationTypeBearer,
+				user.Username,
+				time.Minute,
+				[]string{role.Admin},
+			)
+
 			recorder := httptest.NewRecorder()
 			server.router.ServeHTTP(recorder, request)
 
@@ -244,7 +260,19 @@ func TestListUsers(t *testing.T) {
 			require.NoError(t, err)
 
 			// send request (response is stored in recorder)
-			server := NewServer(store)
+			server := newTestServer(t, store)
+
+			// attach Token (need to attach after init server since it needs to know which token server uses)
+			addAuthorizationToHeader(
+				t,
+				request,
+				server.tokenMaker,
+				authorizationTypeBearer,
+				"test",
+				time.Minute,
+				[]string{role.Admin},
+			)
+
 			recorder := httptest.NewRecorder()
 			server.router.ServeHTTP(recorder, request)
 
@@ -264,6 +292,7 @@ func requireBodyMatchCreateUserResponse(t *testing.T, body *bytes.Buffer, userRe
 	require.Equal(t, userResponse, responseFromBody)
 }
 
+// customer matcher to use in gomock (for param)
 type eqCreateUserParamMatcher struct {
 	arg      db.CreateUserParams
 	password string
@@ -297,7 +326,7 @@ func EqCreateUserParam(arg db.CreateUserParams, password string) gomock.Matcher 
 }
 
 func TestCreateUser(t *testing.T) {
-	user := randomUser()
+	user, _ := randomUser()
 	rawPassword := util.RandomString(10)
 
 	expectedUserResponse := createUserResponse{
@@ -347,14 +376,13 @@ func TestCreateUser(t *testing.T) {
 
 			// prepare to send request
 			data, err := json.Marshal(tc.body)
-			fmt.Println(data)
 			require.NoError(t, err)
 			url := "/users"
 			request, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(data))
 			require.NoError(t, err)
 
 			// send request (response is stored in recorder)
-			server := NewServer(store)
+			server := newTestServer(t, store)
 			recorder := httptest.NewRecorder()
 			server.router.ServeHTTP(recorder, request)
 

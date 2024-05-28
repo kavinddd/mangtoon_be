@@ -6,9 +6,14 @@ INSERT INTO "user"(
 )
 RETURNING *;
 
--- name: GetUser :one
+-- name: GetUserById :one
 SELECT * FROM "user"
 WHERE id = $1 LIMIT 1;
+
+-- name: GetUserByUsername :one
+SELECT * FROM "user"
+WHERE username = $1 LIMIT 1;
+
 
 -- name: ListUsers :many
 SELECT * FROM "user"

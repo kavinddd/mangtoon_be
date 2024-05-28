@@ -2,8 +2,8 @@ package main
 
 import (
 	"database/sql"
-	"github.com/kavinddd/mangtoon_be/internal/api"
 	"github.com/kavinddd/mangtoon_be/internal/db"
+	"github.com/kavinddd/mangtoon_be/internal/rest"
 	"github.com/kavinddd/mangtoon_be/pkg/util"
 	_ "github.com/lib/pq"
 	"log"
@@ -26,7 +26,10 @@ func main() {
 
 	// inject the connected db to run the server
 	store := db.NewStore(conn)
-	s := api.NewServer(store)
+	s, err := rest.NewServer(config, store)
+	if err != nil {
+		log.Fatal("Cannot create server: ", err)
+	}
 
 	// run the server
 	if err := s.Run(config.ServerAddress); err != nil {

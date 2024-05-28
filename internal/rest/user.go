@@ -1,10 +1,12 @@
-package api
+package rest
 
 import (
 	"database/sql"
+	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/kavinddd/mangtoon_be/internal/db"
+	"github.com/kavinddd/mangtoon_be/internal/role"
 	"github.com/kavinddd/mangtoon_be/pkg/util"
 	"net/http"
 	"time"
@@ -22,7 +24,8 @@ type createUserResponse struct {
 	Email    string    `json:"email"`
 }
 
-func (server *Server) CreateUser(ctx *gin.Context) {
+func (server *Server) createUser(ctx *gin.Context) {
+
 	var req createUserRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		ctx.JSON(http.StatusBadRequest, util.ErrorResponse(err))
@@ -77,7 +80,7 @@ type listUsersRequest struct {
 	PageSize int32 `form:"page_size" binding:"required,min=5,max=10"`
 }
 
-func (server *Server) ListUsers(ctx *gin.Context) {
+func (server *Server) listUsers(ctx *gin.Context) {
 	var req listUsersRequest
 	if err := ctx.ShouldBindQuery(&req); err != nil {
 		ctx.JSON(http.StatusBadRequest, util.ErrorResponse(err))
@@ -102,15 +105,23 @@ func (server *Server) ListUsers(ctx *gin.Context) {
 type findUserByIdRequest struct {
 	Id string `uri:"id" binding:"required,uuid"`
 }
-type findUserByIdResponse struct {
-	ID        uuid.UUID `json:"id"`
+type userResponse struct {
 	Username  string    `json:"username"`
 	Email     string    `json:"email"`
 	IsActive  bool      `json:"is_active"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
-func (server *Server) FindUserById(ctx *gin.Context) {
+func newUserResponse(user db.User) userResponse {
+	return userResponse{
+		Username:  user.Username,
+		Email:     user.Email,
+		IsActive:  user.IsActive,
+		CreatedAt: user.CreatedAt,
+	}
+}
+
+func (server *Server) findUserById(ctx *gin.Context) {
 	var req findUserByIdRequest
 	if err := ctx.ShouldBindUri(&req); err != nil {
 		ctx.JSON(http.StatusBadRequest, util.ErrorResponse(err))
@@ -119,10 +130,10 @@ func (server *Server) FindUserById(ctx *gin.Context) {
 
 	id, _ := uuid.Parse(req.Id)
 
-	user, err := server.store.GetUser(ctx, id)
+	user, err := server.store.GetUserById(ctx, id)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			ctx.JSON(http.StatusNotFound, util.ErrorResponse(err))
 			return
 		}
@@ -131,6 +142,17 @@ func (server *Server) FindUserById(ctx *gin.Context) {
 		return
 	}
 
-	ctx.JSON(http.StatusOK, user)
+	payload, _ := getAuthorizationPayload(ctx)
 
+	if !role.IsAdmin(payload.Roles) {
+		if user.Username != payload.Username {
+			ctx.JSON(http.StatusNotFound, util.ErrorResponse(sql.ErrNoRows))
+			return
+		}
+	}
+
+	response := newUserResponse(user)
+
+	ctx.JSON(http.StatusOK, response)
+	return
 }
